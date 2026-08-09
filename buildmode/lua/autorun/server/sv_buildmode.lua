@@ -1,16 +1,22 @@
+-- Cache tables.
+-- Faster than doing something like player.GetAll() and also allows us to append our own data.
 local BM_CACHED_PLAYERS = {}
 local BM_CACHED_ENTS = {}
+
+-- Player state options as a table.
+-- Not necessary to put these into a table, just felt like doing it this way.
 local BM_PLAYER_STATES = {
     [0] = "pvp",
-    [1]= "build",
+    [1] = "build",
 }
 
-local bm_timeout = 60
-local bm_admin_bypass = 0
+local bm_timeout = 60 -- Todo: make this a server cvar.
+local bm_admin_bypass = 0  -- Todo: make this a server cvar.
 
 gameevent.Listen("player_connect")
 gameevent.Listen("player_say")
 
+-- Inserts our own player data table into the cache when a player connects to the server.
 hook.Add("player_connect", "BM_SetupPlayerData", function(data)
     local plytbl = {
         Name = data.name,
@@ -23,6 +29,9 @@ hook.Add("player_connect", "BM_SetupPlayerData", function(data)
     table.insert(BM_CACHED_PLAYERS, data.userid, plytbl)
     --PrintTable(BM_CACHED_PLAYERS)
 end)
+
+-- PlayerSpawnedSomething hooks add an entity entry to the cache.
+-- Each data table only contains the index and owner of the entity.
 
 hook.Add("PlayerSpawnedNPC", "BM_SetupNPCData", function(ply, ent)
     local enttbl = {
@@ -69,6 +78,7 @@ hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
     --PrintTable(BM_CACHED_ENTS)
 end)
 
+-- Changes player state when a player says !build or !pvp, if the player isn't in timeout.
 hook.Add("player_say", "BM_ChangePlayerState", function(data)
     local MSG = string.lower(data.text)
     local UID = data.userid
@@ -97,7 +107,7 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
             end
 
             player:GodDisable()
-            player:SetMoveType(MOVETYPE_WALK)
+            player:SetMoveType(MOVETYPE_WALK) -- Basically forces player out of noclip.
 
             timer.Simple(bm_timeout, function()
                 BM_CACHED_PLAYERS[UID].CanChangeState = true
@@ -108,6 +118,7 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
     end
 end)
 
+-- Checks if a player can toggle noclip.
 hook.Add("PlayerNoClip", "BM_NoClip", function(ply, noclip)
     if BM_CACHED_PLAYERS[ply:UserID()].State == BM_PLAYER_STATES[1] then
         return true
@@ -121,6 +132,8 @@ hook.Add("PlayerNoClip", "BM_NoClip", function(ply, noclip)
     end
 end)
 
+-- Checks if a player should take damage from a given attacker.
+-- If the attacker is in build mode, or is an entity owned by a player who is in build mode, this blocks the damage.
 hook.Add("PlayerShouldTakeDamage", "BM_DamageFilter", function(victim, attacker)
     if attacker:IsPlayer() then
         if BM_CACHED_PLAYERS[attacker:UserID()].State == BM_PLAYER_STATES[1] then
