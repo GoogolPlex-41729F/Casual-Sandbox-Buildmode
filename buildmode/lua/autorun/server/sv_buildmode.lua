@@ -1,3 +1,5 @@
+AddCSLuaFile("autorun/client/cl_buildmode.lua")
+
 -- Cache tables.
 -- Faster than doing something like player.GetAll() and also allows us to append our own data.
 local BM_CACHED_PLAYERS = {}
@@ -17,6 +19,9 @@ gameevent.Listen("player_connect")
 gameevent.Listen("player_say")
 gameevent.Listen("entity_killed")
 
+util.AddNetworkString("BM_AddPlayerToClientCache")
+util.AddNetworkString("BM_RemovePlayerFromClientCache")
+
 -- Inserts our own player data table into the cache when a player connects to the server.
 hook.Add("player_connect", "BM_SetupPlayerData", function(data)
     local plytbl = {
@@ -28,7 +33,6 @@ hook.Add("player_connect", "BM_SetupPlayerData", function(data)
         CanChangeState = true,
     }
     table.insert(BM_CACHED_PLAYERS, data.userid, plytbl)
-    --PrintTable(BM_CACHED_PLAYERS)
 end)
 
 -- PlayerSpawnedSomething hooks add an entity entry to the cache.
@@ -40,7 +44,6 @@ hook.Add("PlayerSpawnedNPC", "BM_SetupNPCData", function(ply, ent)
         Owner = ply,
     }
     table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-    --PrintTable(BM_CACHED_ENTS)
 end)
 
 hook.Add("PlayerSpawnedProp", "BM_SetupPropData", function(ply, _, ent)
@@ -49,7 +52,6 @@ hook.Add("PlayerSpawnedProp", "BM_SetupPropData", function(ply, _, ent)
         Owner = ply,
     }
     table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-    --PrintTable(BM_CACHED_ENTS)
 end)
 
 hook.Add("PlayerSpawnedRagdoll", "BM_SetupRagdollData", function(ply, _, ent)
@@ -58,7 +60,6 @@ hook.Add("PlayerSpawnedRagdoll", "BM_SetupRagdollData", function(ply, _, ent)
         Owner = ply,
     }
     table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-    --PrintTable(BM_CACHED_ENTS)
 end)
 
 hook.Add("PlayerSpawnedSENT", "BM_SetupEntityData", function(ply, ent)
@@ -67,7 +68,6 @@ hook.Add("PlayerSpawnedSENT", "BM_SetupEntityData", function(ply, ent)
         Owner = ply,
     }
     table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-    --PrintTable(BM_CACHED_ENTS)
 end)
 
 hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
@@ -76,7 +76,6 @@ hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
         Owner = ply,
     }
     table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-    --PrintTable(BM_CACHED_ENTS)
 end)
 
 -- Changes player state when a player says !build or !pvp, if the player isn't in timeout.
@@ -91,11 +90,14 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
                 BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[1]
                 BM_CACHED_PLAYERS[UID].CanChangeState = false
 
-                for i, p in ipairs(player.GetAll()) do
+                for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in Build mode.")
                 end
 
-                ply:GodEnable()
+                net.Start("BM_AddPlayerToClientCache")
+                net.WriteInt(UID, 32)
+                net.WritePlayer(ply)
+                net.Send(ply)
 
                 if timer.Exists("bm_blocker_timer") then
                     timer.Start("bm_blocker_timer")
@@ -112,11 +114,15 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
                 BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[0]
                 BM_CACHED_PLAYERS[UID].CanChangeState = false
 
-                for i, p in ipairs(player.GetAll()) do
+                for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in PvP mode.")
                 end
 
-                ply:GodDisable()
+                net.Start("BM_RemovePlayerFromClientCache")
+                net.WriteInt(UID, 32)
+                net.WritePlayer(ply)
+                net.Send(ply)
+
                 ply:SetMoveType(MOVETYPE_WALK) -- Basically forces player out of noclip.
 
                 if timer.Exists("bm_blocker_timer") then
@@ -152,7 +158,8 @@ hook.Add("PlayerNoClip", "BM_NoClip", function(ply, noclip)
 end)
 
 -- Checks if a player should take damage from a given attacker.
--- If the attacker is in build mode, or is an entity owned by a player who is in build mode, this blocks the damage.
+-- If the attacker is in build mode, or is an entity owned by a player who is in Build mode, this blocks the damage.
+-- Also grants universal damage immunity to players in Build mode.
 hook.Add("PlayerShouldTakeDamage", "BM_DamageFilter", function(victim, attacker)
     if attacker:IsPlayer() then
         if BM_CACHED_PLAYERS[attacker:UserID()].State == BM_PLAYER_STATES[1] then
@@ -165,10 +172,13 @@ hook.Add("PlayerShouldTakeDamage", "BM_DamageFilter", function(victim, attacker)
             end
         end
     end
+    if BM_CACHED_PLAYERS[victim:UserID()].State == BM_PLAYER_STATES[1] then
+        return false
+    end
 end)
 
 -- Restarts the blocker timer when the player kills another player.
--- Anti-trolling measure so that players can't just kill someone and then immediately enter build mode as a cheat.
+-- Anti-trolling measure so that players can't just kill someone and then immediately enter Build mode as a cheat.
 hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
     local aIndex = data.entindex_attacker
     local vIndex = data.entindex_killed
@@ -185,15 +195,5 @@ hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
                 BM_CACHED_PLAYERS[UID].CanChangeState = true
             end)
         end
-    end
-end)
-
--- Patch hook for enforcing god mode state.
--- God mode wouldn't stay enabled, say, after suiciding, otherwise.
-hook.Add("PlayerSpawn", "BM_EnforceGodMode", function(ply)
-    if BM_CACHED_PLAYERS[ply:UserID()].State == BM_PLAYER_STATES[1] then
-        ply:GodEnable()
-    else
-        ply:GodDisable()
     end
 end)
