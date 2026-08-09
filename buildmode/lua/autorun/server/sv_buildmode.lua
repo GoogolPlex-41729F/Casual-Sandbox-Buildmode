@@ -187,3 +187,13 @@ hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
         end
     end
 end)
+
+-- Patch hook for enforcing god mode state.
+-- God mode wouldn't stay enabled, say, after suiciding, otherwise.
+hook.Add("PlayerSpawn", "BM_EnforceGodMode", function(ply)
+    if BM_CACHED_PLAYERS[ply:UserID()].State == BM_PLAYER_STATES[1] then
+        ply:GodEnable()
+    else
+        ply:GodDisable()
+    end
+end)
