@@ -15,6 +15,7 @@ local bm_admin_bypass = 0  -- Todo: make this a server cvar.
 
 gameevent.Listen("player_connect")
 gameevent.Listen("player_say")
+gameevent.Listen("entity_killed")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
 hook.Add("player_connect", "BM_SetupPlayerData", function(data)
@@ -82,39 +83,55 @@ end)
 hook.Add("player_say", "BM_ChangePlayerState", function(data)
     local MSG = string.lower(data.text)
     local UID = data.userid
-    local player = Player(UID)
+    local ply = Player(UID)
 
     if BM_CACHED_PLAYERS[UID].CanChangeState == true then
         if MSG == "!build" then
-            BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[1]
-            BM_CACHED_PLAYERS[UID].CanChangeState = false
+            if BM_CACHED_PLAYERS[UID].State == BM_PLAYER_STATES[0] then
+                BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[1]
+                BM_CACHED_PLAYERS[UID].CanChangeState = false
 
-            for id, tbl in ipairs(BM_CACHED_PLAYERS) do
-                Player(id):ChatPrint(player:Nick() .. " is now in Build mode.")
+                for i, p in ipairs(player.GetAll()) do
+                    p:ChatPrint(ply:Nick() .. " is now in Build mode.")
+                end
+
+                ply:GodEnable()
+
+                if timer.Exists("bm_blocker_timer") then
+                    timer.Start("bm_blocker_timer")
+                else
+                    timer.Create("bm_blocker_timer", bm_timeout, 1, function()
+                        BM_CACHED_PLAYERS[UID].CanChangeState = true
+                    end)
+                end
+            else
+                ply:ChatPrint("You are already in Build mode.")
             end
-
-            player:GodEnable()
-
-            timer.Simple(bm_timeout, function()
-                BM_CACHED_PLAYERS[UID].CanChangeState = true
-            end)
         elseif MSG == "!pvp" then
-            BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[0]
-            BM_CACHED_PLAYERS[UID].CanChangeState = false
+            if BM_CACHED_PLAYERS[UID].State == BM_PLAYER_STATES[1] then
+                BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[0]
+                BM_CACHED_PLAYERS[UID].CanChangeState = false
 
-            for id, tbl in ipairs(BM_CACHED_PLAYERS) do
-                Player(id):ChatPrint(player:Nick() .. " is now in PvP mode.")
+                for i, p in ipairs(player.GetAll()) do
+                    p:ChatPrint(ply:Nick() .. " is now in PvP mode.")
+                end
+
+                ply:GodDisable()
+                ply:SetMoveType(MOVETYPE_WALK) -- Basically forces player out of noclip.
+
+                if timer.Exists("bm_blocker_timer") then
+                    timer.Start("bm_blocker_timer")
+                else
+                    timer.Create("bm_blocker_timer", bm_timeout, 1, function()
+                        BM_CACHED_PLAYERS[UID].CanChangeState = true
+                    end)
+                end
+            else
+                ply:ChatPrint("You are already in PvP mode.")
             end
-
-            player:GodDisable()
-            player:SetMoveType(MOVETYPE_WALK) -- Basically forces player out of noclip.
-
-            timer.Simple(bm_timeout, function()
-                BM_CACHED_PLAYERS[UID].CanChangeState = true
-            end)
         end
     else
-        player:ChatPrint("You must wait " .. bm_timeout .. " seconds after changing modes/killing before you can change modes again.")
+        ply:ChatPrint("You must wait " .. string.NiceTime(timer.TimeLeft("bm_blocker_timer")) .. " before changing modes.")
     end
 end)
 
@@ -144,6 +161,27 @@ hook.Add("PlayerShouldTakeDamage", "BM_DamageFilter", function(victim, attacker)
             if BM_CACHED_PLAYERS[BM_CACHED_ENTS[attacker:EntIndex()].Owner:UserID()].State == BM_PLAYER_STATES[1] then
                 return false
             end
+        end
+    end
+end)
+
+-- Restarts the blocker timer when the player kills another player.
+-- Anti-trolling measure so that players can't just kill someone and then immediately enter build mode as a cheat.
+hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
+    local aIndex = data.entindex_attacker
+    local vIndex = data.entindex_killed
+
+    if Entity(aIndex):IsPlayer() && Entity(vIndex):IsPlayer() then
+        local UID = Entity(aIndex):UserID()
+
+        BM_CACHED_PLAYERS[UID].CanChangeState = false
+
+        if timer.Exists("bm_blocker_timer") then
+            timer.Start("bm_blocker_timer")
+        else
+            timer.Create("bm_blocker_timer", bm_timeout, 1, function()
+                BM_CACHED_PLAYERS[UID].CanChangeState = true
+            end)
         end
     end
 end)
