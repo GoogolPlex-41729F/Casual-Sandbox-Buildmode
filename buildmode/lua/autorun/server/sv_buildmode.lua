@@ -131,7 +131,9 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
             end
         end
     else
-        ply:ChatPrint("You must wait " .. string.NiceTime(timer.TimeLeft("bm_blocker_timer")) .. " before changing modes.")
+        if MSG == "!build" || MSG == "!pvp" then
+            ply:ChatPrint("You must wait " .. string.NiceTime(timer.TimeLeft("bm_blocker_timer")) .. " before changing modes.")
+        end
     end
 end)
 
