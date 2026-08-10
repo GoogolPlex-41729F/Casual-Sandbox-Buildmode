@@ -15,7 +15,7 @@ local BM_PLAYER_STATES = {
 local bm_timeout = 60 -- Todo: make this a server cvar.
 local bm_admin_bypass = 0  -- Todo: make this a server cvar.
 
-gameevent.Listen("player_connect")
+gameevent.Listen("player_activate")
 gameevent.Listen("player_say")
 gameevent.Listen("entity_killed")
 
@@ -23,12 +23,9 @@ util.AddNetworkString("BM_AddPlayerToClientCache")
 util.AddNetworkString("BM_RemovePlayerFromClientCache")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
-hook.Add("player_connect", "BM_SetupPlayerData", function(data)
+hook.Add("player_activate", "BM_SetupPlayerData", function(data)
     local plytbl = {
-        Name = data.name,
-        Index = data.index,
         UserID = data.userid,
-        SteamID = data.networkid,
         State = BM_PLAYER_STATES[0],
         CanChangeState = true,
     }
