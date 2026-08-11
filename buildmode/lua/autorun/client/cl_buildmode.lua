@@ -17,9 +17,13 @@ end)
 -- Unlike table.remove(), this method preserves subsequent indicies.
 net.Receive("BM_RemovePlayerFromClientCache", function()
     local UID = net.ReadInt(32)
-    local ply = net.ReadPlayer()
 
     table.insert(builders, UID, nil)
+end)
+
+hook.Add("InitPostEntity", "BM_RequestDataFromServer", function()
+    net.Start("BM_PlayerRequestData")
+    net.SendToServer()
 end)
 
 -- Draws halos around players who are listed in the builders cache.

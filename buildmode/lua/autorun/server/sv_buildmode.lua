@@ -12,67 +12,53 @@ local BM_PLAYER_STATES = {
     [1] = "build",
 }
 
-local bm_timeout = 60 -- Todo: make this a server cvar.
+local bm_timeout = 1 -- Todo: make this a server cvar.
 local bm_admin_bypass = 0  -- Todo: make this a server cvar.
 
 gameevent.Listen("player_activate")
+gameevent.Listen("player_disconnect")
 gameevent.Listen("player_say")
 gameevent.Listen("entity_killed")
 
 util.AddNetworkString("BM_AddPlayerToClientCache")
 util.AddNetworkString("BM_RemovePlayerFromClientCache")
+util.AddNetworkString("BM_PlayerRequestData")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
 hook.Add("player_activate", "BM_SetupPlayerData", function(data)
     local plytbl = {
-        UserID = data.userid,
+        UserID = data.userid, -- This *should* be the same as the index value for this table in the cache. Assuming so, you can use these interchangeably.
         State = BM_PLAYER_STATES[0],
         CanChangeState = true,
     }
     table.insert(BM_CACHED_PLAYERS, data.userid, plytbl)
+    --print("player_activate " .. data.userid)
 end)
 
--- PlayerSpawnedSomething hooks add an entity entry to the cache.
--- Each data table only contains the index and owner of the entity.
+-- "Removes" a player from the cache by setting their data entry to nil.
+-- Unlike table.remove(), this method preserves subsequent indicies.
+hook.Add("player_disconnect", "BM_BlotPlayerData", function(data)
+    table.insert(BM_CACHED_PLAYERS, data.userid, nil)
 
-hook.Add("PlayerSpawnedNPC", "BM_SetupNPCData", function(ply, ent)
-    local enttbl = {
-        Index = ent:EntIndex(),
-        Owner = ply,
-    }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+    for i, p in player.Iterator() do
+        net.Start("BM_RemovePlayerFromClientCache")
+        net.WriteInt(data.userid, 32)
+        net.Send(p)
+    end
+    --print("player_disconnect " .. data.userid)
 end)
 
-hook.Add("PlayerSpawnedProp", "BM_SetupPropData", function(ply, _, ent)
-    local enttbl = {
-        Index = ent:EntIndex(),
-        Owner = ply,
-    }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-end)
-
-hook.Add("PlayerSpawnedRagdoll", "BM_SetupRagdollData", function(ply, _, ent)
-    local enttbl = {
-        Index = ent:EntIndex(),
-        Owner = ply,
-    }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-end)
-
-hook.Add("PlayerSpawnedSENT", "BM_SetupEntityData", function(ply, ent)
-    local enttbl = {
-        Index = ent:EntIndex(),
-        Owner = ply,
-    }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
-end)
-
-hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
-    local enttbl = {
-        Index = ent:EntIndex(),
-        Owner = ply,
-    }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+-- Sends a client data pertaining to each player who is in build mode, at their request.
+-- This is needed so that players who entered build mode before the client joined still have visible halos.
+net.Receive("BM_PlayerRequestData", function(len, ply)
+    for i, p in ipairs(BM_CACHED_PLAYERS) do
+        if BM_CACHED_PLAYERS[i].State == BM_PLAYER_STATES[1] then
+            net.Start("BM_AddPlayerToClientCache")
+            net.WriteInt(p.UserID, 32)
+            net.WritePlayer(Player(p.UserID))
+            net.Send(ply)
+        end
+    end
 end)
 
 -- Changes player state when a player says !build or !pvp, if the player isn't in timeout.
@@ -80,6 +66,8 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
     local MSG = string.lower(data.text)
     local UID = data.userid
     local ply = Player(UID)
+
+    --print("player_say " .. data.userid)
 
     if BM_CACHED_PLAYERS[UID].CanChangeState == true then
         if MSG == "!build" then
@@ -89,12 +77,12 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
 
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in Build mode.")
-                end
 
-                net.Start("BM_AddPlayerToClientCache")
-                net.WriteInt(UID, 32)
-                net.WritePlayer(ply)
-                net.Send(ply)
+                    net.Start("BM_AddPlayerToClientCache")
+                    net.WriteInt(UID, 32)
+                    net.WritePlayer(ply)
+                    net.Send(p)
+                end
 
                 if timer.Exists("bm_blocker_timer") then
                     timer.Start("bm_blocker_timer")
@@ -113,12 +101,11 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
 
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in PvP mode.")
-                end
 
-                net.Start("BM_RemovePlayerFromClientCache")
-                net.WriteInt(UID, 32)
-                net.WritePlayer(ply)
-                net.Send(ply)
+                    net.Start("BM_RemovePlayerFromClientCache")
+                    net.WriteInt(UID, 32)
+                    net.Send(p)
+                end
 
                 ply:SetMoveType(MOVETYPE_WALK) -- Basically forces player out of noclip.
 
@@ -193,4 +180,47 @@ hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
             end)
         end
     end
+end)
+
+-- PlayerSpawnedSomething hooks add an entity entry to the cache.
+-- Each data table only contains the index and owner of the entity.
+
+hook.Add("PlayerSpawnedNPC", "BM_SetupNPCData", function(ply, ent)
+    local enttbl = {
+        Index = ent:EntIndex(),
+        Owner = ply,
+    }
+    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+end)
+
+hook.Add("PlayerSpawnedProp", "BM_SetupPropData", function(ply, _, ent)
+    local enttbl = {
+        Index = ent:EntIndex(),
+        Owner = ply,
+    }
+    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+end)
+
+hook.Add("PlayerSpawnedRagdoll", "BM_SetupRagdollData", function(ply, _, ent)
+    local enttbl = {
+        Index = ent:EntIndex(),
+        Owner = ply,
+    }
+    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+end)
+
+hook.Add("PlayerSpawnedSENT", "BM_SetupEntityData", function(ply, ent)
+    local enttbl = {
+        Index = ent:EntIndex(),
+        Owner = ply,
+    }
+    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+end)
+
+hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
+    local enttbl = {
+        Index = ent:EntIndex(),
+        Owner = ply,
+    }
+    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
 end)
