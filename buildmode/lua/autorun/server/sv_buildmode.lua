@@ -25,20 +25,21 @@ util.AddNetworkString("BM_RemovePlayerFromClientCache")
 util.AddNetworkString("BM_PlayerRequestData")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
+-- Using tbl[index] = data seems to work better than table.insert(tbl, index, data) for some reason.
+-- The insert function would cause strange bugs (due to compute times?) so I've swapped to this.
 hook.Add("player_activate", "BM_SetupPlayerData", function(data)
     local plytbl = {
         UserID = data.userid, -- This *should* be the same as the index value for this table in the cache. Assuming so, you can use these interchangeably.
         State = BM_PLAYER_STATES[0],
         CanChangeState = true,
     }
-    table.insert(BM_CACHED_PLAYERS, data.userid, plytbl)
+    BM_CACHED_PLAYERS[data.userid] = plytbl
     --print("player_activate " .. data.userid)
 end)
 
--- "Removes" a player from the cache by setting their data entry to nil.
--- Unlike table.remove(), this method preserves subsequent indicies.
+-- Effectively removes a player from the cache by setting their data entry to nil.
 hook.Add("player_disconnect", "BM_BlotPlayerData", function(data)
-    table.insert(BM_CACHED_PLAYERS, data.userid, nil)
+    BM_CACHED_PLAYERS[data.userid] = nil
 
     for i, p in player.Iterator() do
         net.Start("BM_RemovePlayerFromClientCache")

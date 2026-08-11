@@ -10,17 +10,17 @@ net.Receive("BM_AddPlayerToClientCache", function()
     local UID = net.ReadInt(32)
     local ply = net.ReadPlayer()
 
-    table.insert(builders, UID, ply)
+    builders[UID] = ply
 end)
 
 -- "Removes" a player from the builders cache by setting their data entry to nil.
--- Unlike table.remove(), this method preserves subsequent indicies.
 net.Receive("BM_RemovePlayerFromClientCache", function()
     local UID = net.ReadInt(32)
 
-    table.insert(builders, UID, nil)
+    builders[UID] = nil
 end)
 
+-- Lets the server know that the client is ready to start receiving data.
 hook.Add("InitPostEntity", "BM_RequestDataFromServer", function()
     net.Start("BM_PlayerRequestData")
     net.SendToServer()
