@@ -191,7 +191,7 @@ hook.Add("PlayerSpawnedNPC", "BM_SetupNPCData", function(ply, ent)
         Index = ent:EntIndex(),
         Owner = ply,
     }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+    BM_CACHED_ENTS[ent:EntIndex()] = enttbl
 end)
 
 hook.Add("PlayerSpawnedProp", "BM_SetupPropData", function(ply, _, ent)
@@ -199,7 +199,7 @@ hook.Add("PlayerSpawnedProp", "BM_SetupPropData", function(ply, _, ent)
         Index = ent:EntIndex(),
         Owner = ply,
     }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+    BM_CACHED_ENTS[ent:EntIndex()] = enttbl
 end)
 
 hook.Add("PlayerSpawnedRagdoll", "BM_SetupRagdollData", function(ply, _, ent)
@@ -207,7 +207,7 @@ hook.Add("PlayerSpawnedRagdoll", "BM_SetupRagdollData", function(ply, _, ent)
         Index = ent:EntIndex(),
         Owner = ply,
     }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+    BM_CACHED_ENTS[ent:EntIndex()] = enttbl
 end)
 
 hook.Add("PlayerSpawnedSENT", "BM_SetupEntityData", function(ply, ent)
@@ -215,7 +215,7 @@ hook.Add("PlayerSpawnedSENT", "BM_SetupEntityData", function(ply, ent)
         Index = ent:EntIndex(),
         Owner = ply,
     }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+    BM_CACHED_ENTS[ent:EntIndex()] = enttbl
 end)
 
 hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
@@ -223,5 +223,5 @@ hook.Add("PlayerSpawnedVehicle", "BM_SetupVehicleData", function(ply, ent)
         Index = ent:EntIndex(),
         Owner = ply,
     }
-    table.insert(BM_CACHED_ENTS, ent:EntIndex(), enttbl)
+    BM_CACHED_ENTS[ent:EntIndex()] = enttbl
 end)
