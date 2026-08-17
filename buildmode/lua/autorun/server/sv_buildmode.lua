@@ -25,25 +25,25 @@ util.AddNetworkString("BM_RemovePlayerFromClientCache")
 util.AddNetworkString("BM_PlayerRequestData")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
--- Using tbl[index] = data seems to work better than table.insert(tbl, index, data) for some reason.
--- The insert function would cause strange bugs (due to compute times?) so I've swapped to this.
 hook.Add("player_activate", "BM_SetupPlayerData", function(data)
+    local SID = Player(data.userid):SteamID()
     local plytbl = {
-        UserID = data.userid, -- This *should* be the same as the index value for this table in the cache. Assuming so, you can use these interchangeably.
+        UserID = data.userid,
         State = BM_PLAYER_STATES[0],
         CanChangeState = true,
     }
-    BM_CACHED_PLAYERS[data.userid] = plytbl
+    BM_CACHED_PLAYERS[SID] = plytbl
     --print("player_activate " .. data.userid)
 end)
 
 -- Effectively removes a player from the cache by setting their data entry to nil.
 hook.Add("player_disconnect", "BM_BlotPlayerData", function(data)
-    BM_CACHED_PLAYERS[data.userid] = nil
+    local SID = Player(data.userid):SteamID()
+    BM_CACHED_PLAYERS[SID] = nil
 
     for i, p in player.Iterator() do
         net.Start("BM_RemovePlayerFromClientCache")
-        net.WriteInt(data.userid, 32)
+        net.WriteInt(SID, 32)
         net.Send(p)
     end
     --print("player_disconnect " .. data.userid)
@@ -55,7 +55,7 @@ net.Receive("BM_PlayerRequestData", function(len, ply)
     for i, p in ipairs(BM_CACHED_PLAYERS) do
         if BM_CACHED_PLAYERS[i].State == BM_PLAYER_STATES[1] then
             net.Start("BM_AddPlayerToClientCache")
-            net.WriteInt(p.UserID, 32)
+            net.WriteString(i, 32)
             net.WritePlayer(Player(p.UserID))
             net.Send(ply)
         end
@@ -66,21 +66,22 @@ end)
 hook.Add("player_say", "BM_ChangePlayerState", function(data)
     local MSG = string.lower(data.text)
     local UID = data.userid
+    local SID = Player(UID):SteamID()
     local ply = Player(UID)
 
     --print("player_say " .. data.userid)
 
-    if BM_CACHED_PLAYERS[UID].CanChangeState == true then
+    if BM_CACHED_PLAYERS[SID].CanChangeState == true then
         if MSG == "!build" then
-            if BM_CACHED_PLAYERS[UID].State == BM_PLAYER_STATES[0] then
-                BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[1]
-                BM_CACHED_PLAYERS[UID].CanChangeState = false
+            if BM_CACHED_PLAYERS[SID].State == BM_PLAYER_STATES[0] then
+                BM_CACHED_PLAYERS[SID].State = BM_PLAYER_STATES[1]
+                BM_CACHED_PLAYERS[SID].CanChangeState = false
 
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in Build mode.")
 
                     net.Start("BM_AddPlayerToClientCache")
-                    net.WriteInt(UID, 32)
+                    net.WriteString(SID)
                     net.WritePlayer(ply)
                     net.Send(p)
                 end
@@ -89,22 +90,22 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
                     timer.Start("bm_blocker_timer")
                 else
                     timer.Create("bm_blocker_timer", bm_timeout, 1, function()
-                        BM_CACHED_PLAYERS[UID].CanChangeState = true
+                        BM_CACHED_PLAYERS[SID].CanChangeState = true
                     end)
                 end
             else
                 ply:ChatPrint("You are already in Build mode.")
             end
         elseif MSG == "!pvp" then
-            if BM_CACHED_PLAYERS[UID].State == BM_PLAYER_STATES[1] then
-                BM_CACHED_PLAYERS[UID].State = BM_PLAYER_STATES[0]
-                BM_CACHED_PLAYERS[UID].CanChangeState = false
+            if BM_CACHED_PLAYERS[SID].State == BM_PLAYER_STATES[1] then
+                BM_CACHED_PLAYERS[SID].State = BM_PLAYER_STATES[0]
+                BM_CACHED_PLAYERS[SID].CanChangeState = false
 
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in PvP mode.")
 
                     net.Start("BM_RemovePlayerFromClientCache")
-                    net.WriteInt(UID, 32)
+                    net.WriteString(SID)
                     net.Send(p)
                 end
 
@@ -114,7 +115,7 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
                     timer.Start("bm_blocker_timer")
                 else
                     timer.Create("bm_blocker_timer", bm_timeout, 1, function()
-                        BM_CACHED_PLAYERS[UID].CanChangeState = true
+                        BM_CACHED_PLAYERS[SID].CanChangeState = true
                     end)
                 end
             else
@@ -130,7 +131,7 @@ end)
 
 -- Checks if a player can toggle noclip.
 hook.Add("PlayerNoClip", "BM_NoClip", function(ply, noclip)
-    if BM_CACHED_PLAYERS[ply:UserID()].State == BM_PLAYER_STATES[1] then
+    if BM_CACHED_PLAYERS[ply:SteamID()].State == BM_PLAYER_STATES[1] then
         return true
     else
         if ply:IsAdmin() && bm_admin_bypass == 1 then
@@ -147,17 +148,17 @@ end)
 -- Also grants universal damage immunity to players in Build mode.
 hook.Add("PlayerShouldTakeDamage", "BM_DamageFilter", function(victim, attacker)
     if attacker:IsPlayer() then
-        if BM_CACHED_PLAYERS[attacker:UserID()].State == BM_PLAYER_STATES[1] then
+        if BM_CACHED_PLAYERS[attacker:SteamID()].State == BM_PLAYER_STATES[1] then
             return false
         end
     elseif BM_CACHED_ENTS[attacker:EntIndex()] != nil then
-        if BM_CACHED_ENTS[attacker:EntIndex()].Owner:UserID() != nil then
-            if BM_CACHED_PLAYERS[BM_CACHED_ENTS[attacker:EntIndex()].Owner:UserID()].State == BM_PLAYER_STATES[1] then
+        if BM_CACHED_ENTS[attacker:EntIndex()].Owner:SteamID() != nil then
+            if BM_CACHED_PLAYERS[BM_CACHED_ENTS[attacker:EntIndex()].Owner:SteamID()].State == BM_PLAYER_STATES[1] then
                 return false
             end
         end
     end
-    if BM_CACHED_PLAYERS[victim:UserID()].State == BM_PLAYER_STATES[1] then
+    if BM_CACHED_PLAYERS[victim:SteamID()].State == BM_PLAYER_STATES[1] then
         return false
     end
 end)
@@ -169,15 +170,15 @@ hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
     local vIndex = data.entindex_killed
 
     if Entity(aIndex):IsPlayer() && Entity(vIndex):IsPlayer() then
-        local UID = Entity(aIndex):UserID()
+        local SID = Entity(aIndex):SteamID()
 
-        BM_CACHED_PLAYERS[UID].CanChangeState = false
+        BM_CACHED_PLAYERS[SID].CanChangeState = false
 
         if timer.Exists("bm_blocker_timer") then
             timer.Start("bm_blocker_timer")
         else
             timer.Create("bm_blocker_timer", bm_timeout, 1, function()
-                BM_CACHED_PLAYERS[UID].CanChangeState = true
+                BM_CACHED_PLAYERS[SID].CanChangeState = true
             end)
         end
     end

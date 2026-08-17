@@ -7,17 +7,17 @@ local builders = {}
 
 -- Adds a player to the builders cache.
 net.Receive("BM_AddPlayerToClientCache", function()
-    local UID = net.ReadInt(32)
+    local SID = net.ReadString()
     local ply = net.ReadPlayer()
 
-    builders[UID] = ply
+    builders[SID] = ply
 end)
 
 -- "Removes" a player from the builders cache by setting their data entry to nil.
 net.Receive("BM_RemovePlayerFromClientCache", function()
-    local UID = net.ReadInt(32)
+    local SID = net.ReadString()
 
-    builders[UID] = nil
+    builders[SID] = nil
 end)
 
 -- Lets the server know that the client is ready to start receiving data.
@@ -35,7 +35,7 @@ end)
 hook.Add("HUDPaintBackground", "BM_BuildModeNotice", function()
     local ply = LocalPlayer()
 
-    if builders[ply:UserID()] != nil then
+    if builders[ply:SteamID()] != nil then
         draw.DrawText("BUILD MODE ACTIVE", "Trebuchet24", ScrW() * 0.5, 25, color_semiopaque, TEXT_ALIGN_CENTER)
     end
 end)
