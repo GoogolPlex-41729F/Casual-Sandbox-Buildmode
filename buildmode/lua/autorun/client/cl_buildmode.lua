@@ -7,21 +7,6 @@ local builders = {}
 
 local client_state = 0
 
--- Adds a player to the builders cache.
-net.Receive("BM_AddPlayerToClientCache", function()
-    local SID = net.ReadString()
-    local ply = net.ReadPlayer()
-
-    builders[SID] = ply
-end)
-
--- "Removes" a player from the builders cache by setting their data entry to nil.
-net.Receive("BM_RemovePlayerFromClientCache", function()
-    local SID = net.ReadString()
-
-    builders[SID] = nil
-end)
-
 net.Receive("BM_ClientStateChanged", function()
     local state = net.ReadBit()
 
@@ -43,14 +28,6 @@ net.Receive("BM_TempClientHalo", function()
         end)
     end
 end)
-
---[[
--- Lets the server know that the client is ready to start receiving data.
-hook.Add("InitPostEntity", "BM_RequestDataFromServer", function()
-    net.Start("BM_PlayerRequestData")
-    net.SendToServer()
-end)
-]]--
 
 -- Draws halos around players who are listed in the builders cache.
 hook.Add("PreDrawHalos", "BM_BuilderHalos", function()

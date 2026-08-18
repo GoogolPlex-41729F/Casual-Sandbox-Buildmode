@@ -16,14 +16,10 @@ local bm_timeout = 1 -- Todo: make this a server cvar.
 local bm_admin_bypass = 0  -- Todo: make this a server cvar.
 
 gameevent.Listen("player_activate")
-gameevent.Listen("player_disconnect")
 gameevent.Listen("player_say")
 gameevent.Listen("entity_killed")
 
-util.AddNetworkString("BM_AddPlayerToClientCache")
-util.AddNetworkString("BM_RemovePlayerFromClientCache")
 util.AddNetworkString("BM_ClientStateChanged")
-util.AddNetworkString("BM_PlayerRequestData")
 util.AddNetworkString("BM_TempClientHalo")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
@@ -35,45 +31,13 @@ hook.Add("player_activate", "BM_SetupPlayerData", function(data)
         CanChangeState = true,
     }
     BM_CACHED_PLAYERS[SID] = plytbl
-    --print("player_activate " .. data.userid)
 end)
-
--- Effectively removes a player from the cache by setting their data entry to nil.
-hook.Add("player_disconnect", "BM_BlotPlayerData", function(data)
-    local SID = Player(data.userid):SteamID()
-    BM_CACHED_PLAYERS[SID] = nil
-
-    for i, p in player.Iterator() do
-        net.Start("BM_RemovePlayerFromClientCache")
-        net.WriteString(SID, 32)
-        net.Send(p)
-    end
-    --print("player_disconnect " .. data.userid)
-end)
-
---[[
--- Sends a client data pertaining to each player who is in build mode, at their request.
--- This is needed so that players who entered build mode before the client joined still have visible halos.
-net.Receive("BM_PlayerRequestData", function(len, ply)
-    for i, p in ipairs(BM_CACHED_PLAYERS) do
-        if BM_CACHED_PLAYERS[i].State == BM_PLAYER_STATES[1] then
-            net.Start("BM_AddPlayerToClientCache")
-            net.WriteString(i, 32)
-            net.WritePlayer(Player(p.UserID))
-            net.Send(ply)
-        end
-    end
-end)
-]]--
 
 -- Changes player state when a player says !build or !pvp, if the player isn't in timeout.
 hook.Add("player_say", "BM_ChangePlayerState", function(data)
     local MSG = string.lower(data.text)
-    local UID = data.userid
-    local SID = Player(UID):SteamID()
-    local ply = Player(UID)
-
-    --print("player_say " .. data.userid)
+    local SID = Player(data.userid):SteamID()
+    local ply = Player(data.userid)
 
     if BM_CACHED_PLAYERS[SID].CanChangeState == true then
         if MSG == "!build" then
@@ -83,13 +47,6 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
 
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in Build mode.")
-
-                    --[[
-                    net.Start("BM_AddPlayerToClientCache")
-                    net.WriteString(SID)
-                    net.WritePlayer(ply)
-                    net.Send(p)
-                    ]]--
                 end
 
                 net.Start("BM_ClientStateChanged")
@@ -113,12 +70,6 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
 
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in PvP mode.")
-
-                    --[[
-                    net.Start("BM_RemovePlayerFromClientCache")
-                    net.WriteString(SID)
-                    net.Send(p)
-                    ]]--
                 end
 
                 net.Start("BM_ClientStateChanged")
@@ -189,20 +140,22 @@ end)
 -- Restarts the blocker timer when the player kills another player.
 -- Anti-trolling measure so that players can't just kill someone and then immediately enter Build mode as a cheat.
 hook.Add("entity_killed", "BM_RestartBlockerTimer", function(data)
-    local aIndex = data.entindex_attacker
-    local vIndex = data.entindex_killed
+    local attacker = Entity(data.entindex_attacker)
+    local vicitm = Entity(data.entindex_killed)
 
-    if Entity(aIndex):IsPlayer() && Entity(vIndex):IsPlayer() then
-        local SID = Entity(aIndex):SteamID()
+    if attacker:IsPlayer() && vicitm:IsPlayer() then
+        if attacker != vicitm then
+            local SID = attacker:SteamID()
 
-        BM_CACHED_PLAYERS[SID].CanChangeState = false
+            BM_CACHED_PLAYERS[SID].CanChangeState = false
 
-        if timer.Exists("bm_blocker_timer") then
-            timer.Start("bm_blocker_timer")
-        else
-            timer.Create("bm_blocker_timer", bm_timeout, 1, function()
-                BM_CACHED_PLAYERS[SID].CanChangeState = true
-            end)
+            if timer.Exists("bm_blocker_timer") then
+                timer.Start("bm_blocker_timer")
+            else
+                timer.Create("bm_blocker_timer", bm_timeout, 1, function()
+                    BM_CACHED_PLAYERS[SID].CanChangeState = true
+                end)
+            end
         end
     end
 end)
