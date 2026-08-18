@@ -22,7 +22,9 @@ gameevent.Listen("entity_killed")
 
 util.AddNetworkString("BM_AddPlayerToClientCache")
 util.AddNetworkString("BM_RemovePlayerFromClientCache")
+util.AddNetworkString("BM_ClientStateChanged")
 util.AddNetworkString("BM_PlayerRequestData")
+util.AddNetworkString("BM_TempClientHalo")
 
 -- Inserts our own player data table into the cache when a player connects to the server.
 hook.Add("player_activate", "BM_SetupPlayerData", function(data)
@@ -43,12 +45,13 @@ hook.Add("player_disconnect", "BM_BlotPlayerData", function(data)
 
     for i, p in player.Iterator() do
         net.Start("BM_RemovePlayerFromClientCache")
-        net.WriteInt(SID, 32)
+        net.WriteString(SID, 32)
         net.Send(p)
     end
     --print("player_disconnect " .. data.userid)
 end)
 
+--[[
 -- Sends a client data pertaining to each player who is in build mode, at their request.
 -- This is needed so that players who entered build mode before the client joined still have visible halos.
 net.Receive("BM_PlayerRequestData", function(len, ply)
@@ -61,6 +64,7 @@ net.Receive("BM_PlayerRequestData", function(len, ply)
         end
     end
 end)
+]]--
 
 -- Changes player state when a player says !build or !pvp, if the player isn't in timeout.
 hook.Add("player_say", "BM_ChangePlayerState", function(data)
@@ -80,11 +84,17 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in Build mode.")
 
+                    --[[
                     net.Start("BM_AddPlayerToClientCache")
                     net.WriteString(SID)
                     net.WritePlayer(ply)
                     net.Send(p)
+                    ]]--
                 end
+
+                net.Start("BM_ClientStateChanged")
+                net.WriteBit(true)
+                net.Send(ply)
 
                 if timer.Exists("bm_blocker_timer") then
                     timer.Start("bm_blocker_timer")
@@ -104,10 +114,16 @@ hook.Add("player_say", "BM_ChangePlayerState", function(data)
                 for i, p in player.Iterator() do
                     p:ChatPrint(ply:Nick() .. " is now in PvP mode.")
 
+                    --[[
                     net.Start("BM_RemovePlayerFromClientCache")
                     net.WriteString(SID)
                     net.Send(p)
+                    ]]--
                 end
+
+                net.Start("BM_ClientStateChanged")
+                net.WriteBit(false)
+                net.Send(ply)
 
                 ply:SetMoveType(MOVETYPE_WALK) -- Basically forces player out of noclip.
 
@@ -159,6 +175,13 @@ hook.Add("PlayerShouldTakeDamage", "BM_DamageFilter", function(victim, attacker)
         end
     end
     if BM_CACHED_PLAYERS[victim:SteamID()].State == BM_PLAYER_STATES[1] then
+        if attacker:IsPlayer() && attacker != victim then
+            net.Start("BM_TempClientHalo")
+            net.WriteString(victim:SteamID())
+            net.WritePlayer(victim)
+            net.Send(attacker)
+        end
+
         return false
     end
 end)
